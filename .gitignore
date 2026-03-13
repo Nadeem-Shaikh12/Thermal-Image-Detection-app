@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+
+# Virtual environments
+venv/
+env/
+.env
+.venv/
+
+# Environment variables / secrets
+*.env
+.env.*
+secrets.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Node modules (if any frontend build tools)
+node_modules/
+
+# Compiled / minified assets
+*.min.js
+*.min.css
+
+# Thermal image captures / temp files
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.raw
+captured_frames/
+temp/
+tmp/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Coverage
+.coverage
+htmlcov/

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DreamVision Smart Factory</title>
+    <meta name="description" content="DreamVision real-time thermal monitoring dashboard for smart factory management.">
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Login View -->
+    <div id="login-view" class="login-container">
+        <div class="login-box">
+            <h1 class="login-title">DreamVision</h1>
+            <p>Thermal Monitoring Dashboard — Enter credentials to continue.</p>
+            <form id="login-form">
+                <input type="text" id="username" placeholder="Username (e.g., admin)" required autocomplete="username">
+                <input type="password" id="password" placeholder="Password (e.g., admin123)" required autocomplete="current-password">
+                <button type="submit">Login</button>
+                <div id="login-error" class="hidden">Invalid credentials.</div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard View -->
+    <div id="dashboard-view" style="display: none;">
+        <header>
+            <div class="header-content">
+                <div>
+                    <h1>DreamVision Dashboard</h1>
+                    <p>Live Thermal Data &amp; Machine Status</p>
+                </div>
+                <div class="header-actions">
+                    <button id="voice-toggle" class="btn-small voice-btn" title="Toggle Voice Alerts">🔊 Voice</button>
+                    <span id="user-role" class="badge">Operator</span>
+                    <button id="logout-btn" class="btn-small">Logout</button>
+                </div>
+            </div>
+            <div class="server-status">
+                <span class="status-indicator"></span>
+                <span id="connection-status">Connecting...</span>
+            </div>
+        </header>
+        <!-- Worker Safety Status Bar -->
+        <div id="worker-safety-bar" class="safety-bar safety-safe">
+            <div class="safety-light">
+                <span class="safety-icon" id="safety-icon">🟢</span>
+            </div>
+            <div class="safety-info">
+                <div class="safety-level" id="safety-level">ALL SYSTEMS SAFE</div>
+                <div class="safety-detail" id="safety-detail">All zones operating within normal parameters</div>
+            </div>
+            <div class="safety-stats" id="safety-stats">
+                <span class="safety-stat"><strong id="stat-safe">5</strong> Safe</span>
+                <span class="safety-stat"><strong id="stat-warning">0</strong> Warning</span>
+                <span class="safety-stat"><strong id="stat-danger">0</strong> Danger</span>
+            </div>
+        </div>
+
+        <main class="dashboard">
+
+            <!-- Row 1: Live Feed + Live Metrics -->
+            <section class="panel live-feed">
+                <h2>Live Thermal Feed <span id="feed-machine" style="font-size:0.9rem;color:var(--text-muted);font-weight:400;">(Waiting...)</span>
+                <span id="camera-status" class="camera-status disconnected">
+                    <span class="camera-dot"></span>
+                    <span id="camera-status-text">No Connection</span>
+                </span>
+            </h2>
+                <div class="feed-placeholder" id="feed-container" style="padding:0;position:relative;display:flex;align-items:center;justify-content:center;">
+                    <img id="thermal-image" src="" alt="Live Thermal Stream" />
+                    <canvas id="hotspot-overlay" style="position:absolute;top:0;left:0;pointer-events:none;border-radius:8px;"></canvas>
+                    <div class="scan-line" id="scan-line"></div>
+                    <p id="feed-status-text" style="position:absolute;z-index:10;">Waiting for ESP32/Sim Thermal Stream...</p>
+                </div>
+
+                <!-- Live Metrics Bar -->
+                <div class="metrics-bar" id="metrics-bar">
+                    <div class="metric-card">
+                        <div class="metric-value" id="metric-max-temp">--</div>
+                        <div class="metric-label">Max Temp</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="metric-avg-temp">--</div>
+                        <div class="metric-label">Avg Temp</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="metric-hotspots">--</div>
+                        <div class="metric-label">Hotspots</div>
+                    </div>
+                    <div class="metric-card" id="metric-status-card">
+                        <div class="metric-value" id="metric-status">--</div>
+                        <div class="metric-label">Status</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Row 1: Active Hotspot List -->
+            <section class="panel hotspots-panel">
+                <h2>Active Hotspot List</h2>
+                <ul id="hotspot-list">
+                    <li><p class="loading">No active hotspots detected...</p></li>
+                </ul>
+            </section>
+
+            <!-- Row 2: Machine Status + Factory Map -->
+            <section class="panel machine-status">
+                <h2>Machine Status List</h2>
+                <ul id="status-list">
+                    <li><p class="loading">Loading data from backend...</p></li>
+                </ul>
+            </section>
+
+            <section class="panel factory-map" style="grid-column: 1 / -1;">
+                <h2>🛡️ Smart Danger Zone Map <span id="zone-alert-count" class="badge hidden" style="background:var(--alert);">0</span></h2>
+                <div class="danger-zone-layout">
+                    <div class="map-container" id="danger-map-container" style="position:relative;height:340px;background:linear-gradient(135deg, rgba(0,0,0,0.3), rgba(0,0,0,0.15));border:1px solid var(--panel-border);border-radius:10px;">
+                        <!-- Grid lines for factory floor look -->
+                        <svg class="map-grid" width="100%" height="100%" style="position:absolute;top:0;left:0;pointer-events:none;">
+                            <defs>
+                                <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
+                                    <path d="M 50 0 L 0 0 0 50" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+                                </pattern>
+                            </defs>
+                            <rect width="100%" height="100%" fill="url(#grid)" />
+                        </svg>
+                        <div id="map-nodes"></div>
+                        <div id="danger-zones"></div>
+                    </div>
+                    <!-- Zone Status Cards -->
+                    <div class="zone-cards" id="zone-cards"></div>
+                </div>
+                <!-- Admin Zone Threshold Controls -->
+                <div id="admin-zone-controls" class="admin-controls hidden">
+                    <h3 style="margin:0 0 0.5rem 0;font-size:0.9rem;color:var(--accent);">⚙️ Admin: Adjust Danger Thresholds</h3>
+                    <div id="threshold-sliders"></div>
+                </div>
+            </section>
+
+            <!-- Row 3: Temp Chart + Hotspot Count Chart -->
+            <section class="panel temperature-graph">
+                <h2>Live Temperature Trend</h2>
+                <div class="chart-container" style="padding:1rem;box-sizing:border-box;">
+                    <canvas id="tempChart"></canvas>
+                </div>
+            </section>
+
+            <section class="panel frequency-graph">
+                <h2>Live Hotspot Count Trend</h2>
+                <div class="chart-container" style="padding:1rem;box-sizing:border-box;">
+                    <canvas id="hotspotChart"></canvas>
+                </div>
+            </section>
+
+            <!-- Row 3b: Zone Temperature Trend -->
+            <section class="panel zone-chart-panel" style="grid-column: 1 / -1;">
+                <h2>🌡️ Zone Temperature Trend</h2>
+                <div class="chart-container" style="padding:1rem;box-sizing:border-box;height:300px;">
+                    <canvas id="zoneChart"></canvas>
+                </div>
+            </section>
+
+            <!-- Row 4: Alerts + Incident History -->
+            <section class="panel alerts">
+                <h2>Alert Notifications <span id="alert-badge" class="badge hidden">0</span></h2>
+                <ul id="alert-list"></ul>
+            </section>
+
+            <section class="panel incident-history">
+                <h2>Incident History <span style="font-size:0.85rem;color:var(--text-muted);font-weight:400;">(Last 10 NOK Events)</span></h2>
+                <ul id="incident-list">
+                    <li><p class="loading">Loading incident history...</p></li>
+                </ul>
+            </section>
+
+            <!-- Row 5: AI Predictions + Maintenance Recommendations -->
+            <section class="panel prediction-panel" style="grid-column: 1 / -1;">
+                <h2>🤖 AI Predictive Maintenance <span class="badge" style="background:var(--accent);font-size:0.65rem;">AI</span></h2>
+                <div class="prediction-cards" id="prediction-cards">
+                    <p class="loading">Analyzing temperature patterns...</p>
+                </div>
+            </section>
+
+            <section class="panel recommendations-panel">
+                <h2>🔧 Maintenance Recommendations</h2>
+                <div id="recommendation-list">
+                    <p class="loading">Waiting for data to generate recommendations...</p>
+                </div>
+            </section>
+
+            <section class="panel timeline-panel">
+                <h2>📋 Thermal Event Timeline <span id="timeline-count" class="badge hidden">0</span></h2>
+                <div class="timeline-container" id="timeline-container">
+                    <p class="loading">No thermal events recorded yet...</p>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Fire Alert Fullscreen Overlay -->
+        <div id="fire-alert-overlay" class="fire-overlay hidden">
+            <div class="fire-content">
+                <div class="fire-icon">🔥</div>
+                <h1>FIRE RISK DETECTED</h1>
+                <div class="fire-details" id="fire-details">Temperature spike detected</div>
+                <button class="fire-dismiss" onclick="dismissFireAlert()">ACKNOWLEDGE</button>
+            </div>
+        </div>
+
+        <!-- Danger Zone Toast Notifications -->
+        <div id="danger-toast-container"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
