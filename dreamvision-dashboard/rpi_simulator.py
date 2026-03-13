@@ -26,9 +26,9 @@ def generate_synthetic_thermal_frame(overheat=False, near_threshold=False):
     distance = np.sqrt(x*x + y*y)
     
     if overheat:
-        # Danger zone: above threshold (85-110°C)
-        peak_temp = random.uniform(85, 110)
-        spread = 15
+        # Reduced peak for demo convenience (prevents triggering 120C FIRE RISK)
+        peak_temp = random.uniform(75, 80)
+        spread = 12
     elif near_threshold:
         # Warning zone: 60-84°C (near threshold range)
         peak_temp = random.uniform(60, 84)

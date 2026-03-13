@@ -1163,3 +1163,104 @@ li:hover {
     opacity: 0.5;
 }
 
+/* ─── Spatial Orientation Overlays ─────────────────── */
+.map-overlay-item {
+    position: absolute;
+    z-index: 10;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Camera Marker (📷) */
+#camera-marker {
+    left: 50%;
+    bottom: 5%;
+    transform: translateX(-50%);
+}
+#camera-marker .icon {
+    font-size: 1.8rem;
+    filter: drop-shadow(0 0 5px rgba(0,0,0,0.8));
+    z-index: 12;
+}
+.camera-fov {
+    position: absolute;
+    bottom: 50%;
+    width: 200px;
+    height: 150px;
+    background: radial-gradient(circle at bottom, rgba(0,210,255,0.1) 0%, transparent 70%);
+    clip-path: polygon(50% 100%, 0 0, 100% 0);
+    z-index: 11;
+    opacity: 0.6;
+}
+
+/* Compass Overlay */
+#map-compass {
+    top: 15px;
+    right: 15px;
+}
+.compass-ring {
+    width: 50px;
+    height: 50px;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 50%;
+    position: relative;
+    background: rgba(0,0,0,0.3);
+}
+.compass-ring .dir {
+    position: absolute;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+.compass-ring .dir.n { top: 2px; left: 50%; transform: translateX(-50%); color: var(--alert); }
+.compass-ring .dir.e { right: 4px; top: 50%; transform: translateY(-50%); }
+.compass-ring .dir.s { bottom: 2px; left: 50%; transform: translateX(-50%); }
+.compass-ring .dir.w { left: 4px; top: 50%; transform: translateY(-50%); }
+
+/* Worker Marker (YOU) */
+#worker-marker {
+    left: 45%;
+    bottom: 40%; /* Initial starting position */
+}
+#worker-marker .icon {
+    font-size: 1.4rem;
+    filter: drop-shadow(0 0 5px rgba(0,0,0,0.8));
+}
+#worker-marker .label {
+    font-size: 0.55rem;
+    font-weight: 800;
+    background: var(--ok);
+    color: black;
+    padding: 1px 4px;
+    border-radius: 3px;
+    margin-top: -4px;
+}
+.worker-ping {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    border: 2px solid var(--ok);
+    border-radius: 50%;
+    animation: worker-ping 2s infinite;
+}
+@keyframes worker-ping {
+    0% { transform: scale(0.5); opacity: 1; }
+    100% { transform: scale(2); opacity: 0; }
+}
+
+/* Directional Arrow Animation */
+.guide-arrow {
+    stroke: var(--alert);
+    stroke-width: 3;
+    stroke-dasharray: 8 4;
+    animation: flow-dash 1s linear infinite;
+    filter: drop-shadow(0 0 8px var(--alert));
+}
+@keyframes flow-dash {
+    to { stroke-dashoffset: -12; }
+}
+
+

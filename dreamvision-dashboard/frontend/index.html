@@ -127,6 +127,36 @@
                         </svg>
                         <div id="map-nodes"></div>
                         <div id="danger-zones"></div>
+                        
+                        <!-- Spatial Orientation Overlays -->
+                        <div id="camera-marker" class="map-overlay-item" title="Thermal Camera Location">
+                            <span class="icon">📷</span>
+                            <div class="camera-fov"></div>
+                        </div>
+                        
+                        <div id="map-compass" class="map-overlay-item">
+                            <div class="compass-ring">
+                                <span class="dir n">N</span>
+                                <span class="dir e">E</span>
+                                <span class="dir s">S</span>
+                                <span class="dir w">W</span>
+                            </div>
+                        </div>
+
+                        <div id="worker-marker" class="map-overlay-item" title="Your Location">
+                            <div class="worker-ping"></div>
+                            <span class="icon">🟢</span>
+                            <span class="label">YOU</span>
+                        </div>
+                        
+                        <!-- Directional SVG Layer -->
+                        <svg id="directional-layer" width="100%" height="100%" style="position:absolute;top:0;left:0;pointer-events:none;z-index:5;">
+                            <defs>
+                                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+                                    <polygon points="0 0, 10 3.5, 0 7" fill="var(--alert)" />
+                                </marker>
+                            </defs>
+                        </svg>
                     </div>
                     <!-- Zone Status Cards -->
                     <div class="zone-cards" id="zone-cards"></div>
