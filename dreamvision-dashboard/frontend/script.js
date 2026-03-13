@@ -602,12 +602,44 @@ function updateFactoryMap(data) {
 
 // Zone configuration — each zone is linked to a machine
 const dangerZones = [
-    { id: 'zone-motor-a',     name: 'Motor A Zone',       machine: 'Motor A',       threshold: 85,  x: 20, y: 30, radius: 55, currentTemp: 0, state: 'safe', lastAlertTime: 0 },
-    { id: 'zone-motor-b',     name: 'Motor B Zone',       machine: 'Motor B',       threshold: 85,  x: 50, y: 20, radius: 55, currentTemp: 0, state: 'safe', lastAlertTime: 0 },
-    { id: 'zone-motor-c',     name: 'Motor C Zone',       machine: 'Motor C',       threshold: 85,  x: 80, y: 40, radius: 55, currentTemp: 0, state: 'safe', lastAlertTime: 0 },
-    { id: 'zone-conveyor',    name: 'Conveyor Zone',      machine: 'Conveyor Belt', threshold: 80,  x: 40, y: 70, radius: 60, currentTemp: 0, state: 'safe', lastAlertTime: 0 },
-    { id: 'zone-pump',        name: 'Pump Unit Zone',     machine: 'Pump Unit',     threshold: 90,  x: 75, y: 80, radius: 55, currentTemp: 0, state: 'safe', lastAlertTime: 0 },
+    { id: 'zone-motor-a',     name: 'Motor A Zone',       machine: 'Motor A',       threshold: 85,  x: 20, y: 30, radius: 55, currentTemp: 0, state: 'safe', lastAlertTime: 0, distance: 0, direction: '' },
+    { id: 'zone-motor-b',     name: 'Motor B Zone',       machine: 'Motor B',       threshold: 85,  x: 50, y: 20, radius: 55, currentTemp: 0, state: 'safe', lastAlertTime: 0, distance: 0, direction: '' },
+    { id: 'zone-motor-c',     name: 'Motor C Zone',       machine: 'Motor C',       threshold: 85,  x: 80, y: 40, radius: 55, currentTemp: 0, state: 'safe', lastAlertTime: 0, distance: 0, direction: '' },
+    { id: 'zone-conveyor',    name: 'Conveyor Zone',      machine: 'Conveyor Belt', threshold: 80,  x: 40, y: 70, radius: 60, currentTemp: 0, state: 'safe', lastAlertTime: 0, distance: 0, direction: '' },
+    { id: 'zone-pump',        name: 'Pump Unit Zone',     machine: 'Pump Unit',     threshold: 90,  x: 75, y: 80, radius: 55, currentTemp: 0, state: 'safe', lastAlertTime: 0, distance: 0, direction: '' },
 ];
+
+const CAMERA_POS = { x: 50, y: 95 }; // Bottom-center reference
+
+// ─── Spatial Helpers ──────────────────────────────────────────────────────
+function calculateBearing(targetX, targetY) {
+    const dx = targetX - CAMERA_POS.x;
+    const dy = CAMERA_POS.y - targetY; // Invert Y as 0 is top
+    const angle = (Math.atan2(dx, dy) * 180) / Math.PI;
+    const normalized = (angle + 360) % 360;
+
+    const directions = [
+        { label: 'North', min: 337.5, max: 360 },
+        { label: 'North', min: 0, max: 22.5 },
+        { label: 'North-East', min: 22.5, max: 67.5 },
+        { label: 'East', min: 67.5, max: 112.5 },
+        { label: 'South-East', min: 112.5, max: 157.5 },
+        { label: 'South', min: 157.5, max: 202.5 },
+        { label: 'South-West', min: 202.5, max: 247.5 },
+        { label: 'West', min: 247.5, max: 292.5 },
+        { label: 'North-West', min: 292.5, max: 337.5 }
+    ];
+
+    const match = directions.find(d => normalized >= d.min && normalized < d.max);
+    return match ? match.label : 'North';
+}
+
+function calculateDistance(targetX, targetY) {
+    const dx = targetX - CAMERA_POS.x;
+    const dy = targetY - CAMERA_POS.y;
+    const pixelDist = Math.sqrt(dx * dx + dy * dy);
+    return (pixelDist * 0.15).toFixed(1); // Rough mapping: 1% UI ≈ 0.15 meters
+}
 
 let zoneChartHistory = {};   // { zoneName: [{t, v}] }
 const MAX_ZONE_POINTS = 30;
@@ -655,6 +687,10 @@ function renderZoneStatusCards() {
         const barColor = zone.state === 'danger' ? 'var(--alert)' :
                          zone.state === 'warning' ? '#ffaa00' : 'var(--ok)';
 
+        // Calculate spatial metrics
+        zone.direction = calculateBearing(zone.x, zone.y);
+        zone.distance = calculateDistance(zone.x, zone.y);
+
         const card = document.createElement('div');
         card.className = `zone-card ${zone.state}`;
         card.innerHTML = `
@@ -667,8 +703,10 @@ function renderZoneStatusCards() {
             <div class="zone-card-body">
                 <span class="label">Current</span>
                 <span class="value" style="color:${barColor}">${zone.currentTemp > 0 ? zone.currentTemp.toFixed(1) + '°C' : '--'}</span>
-                <span class="label">Threshold</span>
-                <span class="value">${zone.threshold}°C</span>
+                <span class="label">Orientation</span>
+                <span class="value">${zone.direction}</span>
+                <span class="label">Distance</span>
+                <span class="value">${zone.distance}m</span>
                 <span class="label">Machine</span>
                 <span class="value">${zone.machine}</span>
             </div>
@@ -813,6 +851,42 @@ function updateDangerZones(data) {
     renderDangerZoneCircles();
     renderZoneStatusCards();
     updateZoneChart();
+    renderDirectionalLayer();
+}
+
+function renderDirectionalLayer() {
+    const layer = document.getElementById('directional-layer');
+    if (!layer) return;
+    
+    // Clear existing arrows
+    const existing = layer.querySelectorAll('.guide-arrow');
+    existing.forEach(e => e.remove());
+
+    // Only draw arrows for warning/danger zones
+    dangerZones.forEach(zone => {
+        if (zone.state === 'safe') return;
+
+        const x1 = `${CAMERA_POS.x}%`;
+        const y1 = `${CAMERA_POS.y}%`;
+        const x2 = `${zone.x}%`;
+        const y2 = `${zone.y}%`;
+
+        const arrow = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        arrow.setAttribute("x1", x1);
+        arrow.setAttribute("y1", y1);
+        arrow.setAttribute("x2", x2);
+        arrow.setAttribute("y2", y2);
+        arrow.setAttribute("class", "guide-arrow");
+        arrow.setAttribute("marker-end", "url(#arrowhead)");
+        
+        // Change color based on severity
+        if (zone.state === 'warning') {
+            arrow.style.stroke = '#ffaa00';
+            arrow.style.filter = 'drop-shadow(0 0 5px rgba(255,170,0,0.5))';
+        }
+
+        layer.appendChild(arrow);
+    });
 }
 
 // ─── Zone Temperature Trend Chart ─────────────────────────────────────────
