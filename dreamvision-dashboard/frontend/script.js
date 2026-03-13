@@ -464,9 +464,72 @@ function updateLiveFeed(data) {
         img.style.display = 'block';
         document.getElementById('feed-machine').innerText = `(${latestReading.machine_name})`;
         drawHotspots(latestReading);
+        
+        // --- PRECISION GUIDANCE ---
+        processPrecisionGuidance(latestReading);
 
         // Update live metrics from this frame
         updateLiveMetrics(latestReading);
+    }
+}
+
+// ─── Precision Guidance Logic ──────────────────────────────────────────────
+function processPrecisionGuidance(reading) {
+    const hud = document.getElementById('precision-hud');
+    const mapArrowGroup = document.getElementById('map-guidance-group');
+    const mapArrow = document.getElementById('map-guidance-arrow');
+    const dirText = document.getElementById('hud-direction');
+    const angleText = document.getElementById('hud-angle');
+    const distText = document.getElementById('hud-distance');
+
+    if (!hud || !mapArrowGroup) return;
+
+    let hotspots = reading.hotspots;
+    if (typeof hotspots === 'string') {
+        try { hotspots = JSON.parse(hotspots); } catch(e) { hotspots = []; }
+    }
+
+    // Hide guidance if no hotspots or if data is safe
+    if (!hotspots || hotspots.length === 0 || reading.status === 'SAFE') {
+        hud.classList.add('hidden');
+        mapArrowGroup.classList.add('hidden');
+        return;
+    }
+
+    hud.classList.remove('hidden');
+    mapArrowGroup.classList.remove('hidden');
+
+    // Use the primary (largest/first) hotspot for guidance
+    const hs = hotspots[0];
+    const x = hs.x;
+    const area = hs.area;
+
+    // 1. Direction Classification (LEFT/CENTER/RIGHT)
+    let direction = "CENTER";
+    if (x <= 26) direction = "LEFT";
+    else if (x >= 54) direction = "RIGHT";
+
+    // 2. Angle Calculation (Angle = x / width * FOV)
+    const fov = 60;
+    const width = 80;
+    const angleOffset = (x / width) * fov - (fov / 2); // Relative to center (-30 to +30)
+    const displayAngle = Math.abs(Math.round(angleOffset));
+
+    // 3. Distance Estimation
+    const distanceVal = (25 / Math.sqrt(area)).toFixed(1);
+
+    // Update HUD Stats
+    dirText.textContent = direction;
+    angleText.textContent = `${displayAngle}° ${direction === 'CENTER' ? '' : direction}`;
+    distText.textContent = `~${distanceVal}m`;
+    
+    // 4. Update Map Arrow Rotation
+    // In CSS, transform-origin is 50% 95% (camera location)
+    mapArrow.style.transform = `rotate(${angleOffset}deg)`;
+
+    // 5. Voice Guidance (Throttled by speakAlert)
+    if (reading.status === 'DANGER' || reading.status === 'WARNING') {
+        speakAlert(`Warning: Overheating detected on your ${direction.toLowerCase()} side.`);
     }
 }
 
@@ -584,7 +647,11 @@ function updateFactoryMap(data) {
         const isWarn = entry?.status === 'WARNING';
         const isDanger = entry?.status === 'DANGER' || entry?.status === 'FIRE RISK' || entry?.status === 'NOK';
         
-        const cls = !entry ? 'node-unknown' : isDanger ? 'node-nok' : isWarn ? 'node-warning' : 'node-ok';
+        // --- VISIBILITY REFINEMENT ---
+        // Hide node if safe or no data
+        if (isSafe) return;
+
+        const cls = isDanger ? 'node-nok' : isWarn ? 'node-warning' : 'node-ok';
         const tip = entry ? `${name}\n${entry.temperature}°C — ${entry.status}` : `${name}: No Data`;
 
         node.classList.add(cls);
@@ -660,6 +727,10 @@ function renderDangerZoneCircles() {
     container.innerHTML = '';
 
     dangerZones.forEach(zone => {
+        // --- VISIBILITY REFINEMENT ---
+        // Only render the circle if it's NOT in safe state
+        if (zone.state === 'safe') return;
+
         const el = document.createElement('div');
         el.className = `danger-zone-circle zone-${zone.state}`;
         el.id = zone.id;
@@ -1151,6 +1222,9 @@ const FIRE_COOLDOWN_MS = 15000;    // Don't show popup again for 15s per machine
 let fireAlertActive = false;
 
 function detectFireRisk(data) {
+    // Intrusive alerts disabled for local demo. 
+    // Logic remains here for future reference but is bypassed.
+    return;
     const machines = {};
     for (const entry of data) {
         if (entry.machine_name && entry.temperature) machines[entry.machine_name] = entry;
@@ -1185,6 +1259,8 @@ function detectFireRisk(data) {
 }
 
 function triggerFireAlert(machineName, temp, spike) {
+    // Intrusive alerts disabled for local demo.
+    return;
     fireAlertActive = true;
     const overlay = document.getElementById('fire-alert-overlay');
     const details = document.getElementById('fire-details');
@@ -1406,7 +1482,7 @@ function updateAdvancedFeatures(data) {
     if (!cameraConnected) return; // Halt analytics if camera is offline
 
     updatePredictions(data);
-    detectFireRisk(data);
+    // detectFireRisk(data); // Disabled to prevent intrusive demo interruptions
     updateTimeline(data);
     updateRecommendations(data);
     updateWorkerSafety();

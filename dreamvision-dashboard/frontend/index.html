@@ -72,6 +72,25 @@
                     <img id="thermal-image" src="" alt="Live Thermal Stream" />
                     <canvas id="hotspot-overlay" style="position:absolute;top:0;left:0;pointer-events:none;border-radius:8px;"></canvas>
                     <div class="scan-line" id="scan-line"></div>
+                    
+                    <!-- Precision Guidance HUD Overlay -->
+                    <div id="precision-hud" class="precision-hud hidden">
+                        <div class="hud-metrics">
+                            <div class="hud-metric">
+                                <span class="label">Direction</span>
+                                <span id="hud-direction" class="value">CENTER</span>
+                            </div>
+                            <div class="hud-metric">
+                                <span class="label">Angle</span>
+                                <span id="hud-angle" class="value">0°</span>
+                            </div>
+                            <div class="hud-metric">
+                                <span class="label">Distance</span>
+                                <span id="hud-distance" class="value">~0.0m</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <p id="feed-status-text" style="position:absolute;z-index:10;">Waiting for ESP32/Sim Thermal Stream...</p>
                 </div>
 
@@ -122,8 +141,16 @@
                                 <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
                                     <path d="M 50 0 L 0 0 0 50" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
                                 </pattern>
+                                <marker id="arrowhead-red" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+                                    <polygon points="0 0, 10 3.5, 0 7" fill="#ff4b4b" />
+                                </marker>
                             </defs>
                             <rect width="100%" height="100%" fill="url(#grid)" />
+                            
+                            <!-- Precision Guidance Map Arrow -->
+                            <g id="map-guidance-group" class="hidden">
+                                <line id="map-guidance-arrow" x1="50%" y1="95%" x2="50%" y2="85%" class="map-guidance-arrow" marker-end="url(#arrowhead-red)" />
+                            </g>
                         </svg>
                         <div id="map-nodes"></div>
                         <div id="danger-zones"></div>

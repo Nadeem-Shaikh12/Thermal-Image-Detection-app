@@ -123,7 +123,7 @@ def process_frame(packet: bytes) -> dict:
         if area > 3: # require minimum size
             x, y, w, h = cv2.boundingRect(cnt)
             roi_max_temp = float(temps[y:y+h, x:x+w].max())
-            if roi_max_temp > (avg_temp + 15) and roi_max_temp > 80:
+            if roi_max_temp > (avg_temp + 10):
                 hotspots.append({
                     "x": int(x), "y": int(y), "w": int(w), "h": int(h),
                     "area": int(area),

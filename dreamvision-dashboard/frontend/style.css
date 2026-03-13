@@ -1263,4 +1263,84 @@ li:hover {
     to { stroke-dashoffset: -12; }
 }
 
+/* ─── Precision Guidance HUD Overlay ──────────────── */
+.precision-hud {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    transition: all 0.5s ease;
+}
+
+.precision-hud.hidden {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.hud-arrow-container {
+    display: none; /* Removed from HUD, moved to Map */
+}
+
+/* ─── Map-Integrated Guidance Arrow ──────────────── */
+.map-guidance-arrow {
+    stroke: #ff4b4b;
+    stroke-width: 4;
+    stroke-linecap: round;
+    transition: all 0.3s ease;
+    filter: drop-shadow(0 0 8px rgba(255, 75, 75, 0.8));
+    animation: map-hud-pulse 1.5s infinite;
+    transform-origin: 50% 95%; /* Rotate around camera position */
+}
+
+@keyframes map-hud-pulse {
+    0% { opacity: 0.4; stroke-width: 3; }
+    50% { opacity: 1; stroke-width: 6; }
+    100% { opacity: 0.4; stroke-width: 3; }
+}
+
+#map-guidance-group.hidden {
+    display: none;
+}
+
+.hud-metrics {
+    width: 100%;
+    background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+    padding: 20px;
+    display: flex;
+    justify-content: space-around;
+    align-items: flex-end;
+}
+
+.hud-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.hud-metric .label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.hud-metric .value {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: var(--accent);
+    text-shadow: 0 0 10px rgba(0,210,255,0.5);
+}
+
+.hud-arrow.left { transform: rotate(-90deg); }
+.hud-arrow.right { transform: rotate(90deg); }
+.hud-arrow.center { transform: rotate(0deg); }
+
+
 
