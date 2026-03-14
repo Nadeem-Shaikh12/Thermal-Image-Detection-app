@@ -1,9 +1,10 @@
 // ─── Config ────────────────────────────────────────────────────────────────
-const SERVER_HOST    = window.location.hostname || "localhost";
-const SERVER_URL_BASE = `http://${SERVER_HOST}:8000`;
-const API_URL        = `${SERVER_URL_BASE}/data`;
-const LOGIN_URL      = `${SERVER_URL_BASE}/login`;
-const WS_BASE_URL    = `ws://${SERVER_HOST}:8000/ws`;
+const SERVER_HOST     = window.location.hostname || "localhost";
+const SERVER_PORT     = window.location.port || "8000";
+const SERVER_URL_BASE = `${window.location.protocol}//${SERVER_HOST}:${SERVER_PORT}`;
+const API_URL         = `${SERVER_URL_BASE}/data`;
+const LOGIN_URL       = `${SERVER_URL_BASE}/login`;
+const WS_BASE_URL     = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${SERVER_HOST}:${SERVER_PORT}/ws`;
 
 // Buffers for live charts
 const MAX_CHART_POINTS = 40;
@@ -23,6 +24,17 @@ let lastFrameTime        = 0;      // timestamp of last received frame
 let cameraConnected      = false;  // current camera state
 let cameraWatchdogTimer  = null;   // interval ID for the watchdog
 let authToken    = localStorage.getItem('dreamvision_token');
+let assetConfigs = {}; // Stage 2: stored thresholds and coordinates
+let isometricEnabled = false;
+
+// Stage 2 Debugging: Helper for browsers that don't support findLast
+function findLastCompatible(arr, predicate) {
+    if (!arr) return null;
+    for (let i = arr.length - 1; i >= 0; i--) {
+        if (predicate(arr[i])) return arr[i];
+    }
+    return null;
+}
 
 // ─── DOM Elements ─────────────────────────────────────────────────────────
 const loginView    = document.getElementById('login-view');
@@ -41,10 +53,11 @@ function initChart() {
     // ── Temperature Trend ──────────────────────────────────────────
     const tempCanvas = document.getElementById('tempChart');
     if (tempCanvas) {
+        if (tempChart) tempChart.destroy();
         const ctx = tempCanvas.getContext('2d');
         const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-        gradient.addColorStop(0, 'rgba(0, 210, 255, 0.5)');
-        gradient.addColorStop(1, 'rgba(0, 210, 255, 0.02)');
+        gradient.addColorStop(0, 'rgba(0, 242, 254, 0.5)');
+        gradient.addColorStop(1, 'rgba(0, 242, 254, 0.02)');
 
         tempChart = new Chart(ctx, {
             type: 'line',
@@ -53,10 +66,10 @@ function initChart() {
                 datasets: [{
                     label: 'Max Temp (°C)',
                     data: [],
-                    borderColor: '#00d2ff',
+                    borderColor: '#00F2FE',
                     backgroundColor: gradient,
                     borderWidth: 2,
-                    pointBackgroundColor: '#00d2ff',
+                    pointBackgroundColor: '#00F2FE',
                     pointBorderColor: '#fff',
                     pointRadius: 3,
                     pointHoverRadius: 6,
@@ -83,10 +96,11 @@ function initChart() {
     // ── Hotspot Count Trend ────────────────────────────────────────
     const hsCanvas = document.getElementById('hotspotChart');
     if (hsCanvas) {
+        if (hotspotChart) hotspotChart.destroy();
         const hsCtx = hsCanvas.getContext('2d');
         const hsGrad = hsCtx.createLinearGradient(0, 0, 0, 300);
-        hsGrad.addColorStop(0, 'rgba(255, 75, 75, 0.45)');
-        hsGrad.addColorStop(1, 'rgba(255, 75, 75, 0.02)');
+        hsGrad.addColorStop(0, 'rgba(255, 59, 48, 0.45)');
+        hsGrad.addColorStop(1, 'rgba(255, 59, 48, 0.02)');
 
         hotspotChart = new Chart(hsCtx, {
             type: 'line',
@@ -95,10 +109,10 @@ function initChart() {
                 datasets: [{
                     label: 'Hotspot Count',
                     data: [],
-                    borderColor: '#ff4b4b',
+                    borderColor: '#FF3B30',
                     backgroundColor: hsGrad,
                     borderWidth: 2,
-                    pointBackgroundColor: '#ff4b4b',
+                    pointBackgroundColor: '#FF3B30',
                     pointBorderColor: '#fff',
                     pointRadius: 3,
                     pointHoverRadius: 6,
@@ -245,14 +259,16 @@ function updateStatus(data) {
 }
 
 // ─── Alert List ──────────────────────────────────────────────────────────
-function updateAlerts(data) {
+function updateAlerts() {
     const alertList = document.getElementById("alert-list");
     const badge     = document.getElementById("alert-badge");
     if (!alertList) return;
 
     alertList.innerHTML = "";
-    // Filter out OK/SAFE
-    const alerts = data.filter(d => ['NOK', 'WARNING', 'DANGER', 'FIRE RISK'].includes(d.status)).slice(0, 5);
+    // Generate alerts from dangerZones
+    const alerts = dangerZones.filter(z => z.state === 'danger' || z.state === 'warning')
+        .sort((a, b) => b.currentTemp - a.currentTemp)
+        .slice(0, 5);
 
     if (alerts.length > 0) {
         badge.innerText = alerts.length;
@@ -263,18 +279,17 @@ function updateAlerts(data) {
         return;
     }
 
-    alerts.forEach(alert => {
+    alerts.forEach(zone => {
         const li = document.createElement("li");
         let color = "var(--alert)";
         let bg = "var(--alert-bg)";
         let icon = "⚠️";
+        let statusText = zone.state === 'danger' ? 'DANGER' : 'WARNING';
         
-        if (alert.status === 'WARNING') {
+        if (zone.state === 'warning') {
             color = "#ffc107";
             bg = "rgba(255, 193, 7, 0.1)";
             icon = "🟡";
-        } else if (alert.status === 'FIRE RISK') {
-            icon = "🔥";
         }
         
         li.style.borderLeftColor = color;
@@ -284,13 +299,12 @@ function updateAlerts(data) {
                 <div style="display:flex;align-items:center;gap:0.8rem;">
                     <span style="font-size:1.5rem;">${icon}</span>
                     <div>
-                        <strong style="color:white;">${alert.machine_name} — ${alert.status}</strong>
-                        <div style="color:var(--text-muted);font-size:0.85rem;margin-top:0.2rem;">${alert.timestamp}</div>
+                        <strong style="color:white;">${zone.name} — ${statusText}</strong>
+                        <div style="color:var(--text-muted);font-size:0.85rem;margin-top:0.2rem;">Live reading</div>
                     </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:1rem;">
-                    <span style="color:${color};font-weight:bold;font-size:1.1rem;">${alert.temperature}°C</span>
-                    <button class="btn-small" onclick="downloadReport(${alert.id})" style="background:${color};padding:4px 8px;font-size:0.75rem;color:#000;">Export PDF</button>
+                    <span style="color:${color};font-weight:bold;font-size:1.1rem;">${zone.currentTemp.toFixed(1)}°C</span>
                 </div>
             </div>
         `;
@@ -303,15 +317,48 @@ function updateIncidentHistory(data) {
     const list = document.getElementById('incident-list');
     if (!list) return;
 
-    const nok = data.filter(d => d.status === 'NOK').slice(0, 10);
+    const incidentRows = data.filter(d => ['NOK', 'FIRE RISK'].includes(d.status)).slice(0, 10);
 
-    if (nok.length === 0) {
+    if (incidentRows.length === 0) {
         list.innerHTML = "<li><p style='color:var(--ok);'>✓ No overheating incidents recorded.</p></li>";
         return;
     }
 
     list.innerHTML = "";
-    nok.forEach(entry => {
+    let displayCount = 0;
+
+    incidentRows.forEach(entry => {
+        if (entry.machine_name === "ESP32_THERMAL_CAM" && entry.hotspots) {
+            let hsArray = [];
+            try {
+                hsArray = typeof entry.hotspots === 'string' ? JSON.parse(entry.hotspots) : entry.hotspots;
+            } catch(e) {}
+            
+            if (hsArray.length > 0) {
+                hsArray.filter(hs => hs.max_val > 80).forEach((hs, idx) => {
+                    if (displayCount >= 10) return;
+                    const machineId = `hotspot_${idx}`;
+                    const config = assetConfigs[machineId] || {};
+                    const hsName = config.display_name || `Hotspot #${idx + 1}`;
+                    
+                    renderIncidentItem({
+                        ...entry,
+                        machine_name: hsName,
+                        temperature: hs.max_val.toFixed(1)
+                    });
+                    displayCount++;
+                });
+            } else if (displayCount < 10) {
+                renderIncidentItem(entry);
+                displayCount++;
+            }
+        } else if (displayCount < 10) {
+            renderIncidentItem(entry);
+            displayCount++;
+        }
+    });
+
+    function renderIncidentItem(entry) {
         const div = document.createElement('div');
         div.className = 'incident-item';
 
@@ -328,7 +375,7 @@ function updateIncidentHistory(data) {
             <div class="incident-temp">${entry.temperature}°C</div>
         `;
         list.appendChild(div);
-    });
+    }
 }
 
 // ─── PDF Download ──────────────────────────────────────────────────────────
@@ -428,7 +475,7 @@ function checkForLiveESP32Frame(data) {
     // Look for ESP32_THERMAL_CAM entries with any image data
     // The camera reader uploads via thermal_image (base64) and the backend
     // attaches live_image_b64 to the latest entry in the broadcast.
-    const liveFrame = data.findLast(d =>
+    const liveFrame = findLastCompatible(data, d =>
         d.machine_name === "ESP32_THERMAL_CAM" &&
         (d.live_image_b64 || d.thermal_image)
     );
@@ -446,7 +493,7 @@ function updateLiveFeed(data) {
     if (!cameraConnected) return;
 
     // Prioritize ESP32 hardware camera; fallback to latest any-machine reading
-    const hardwareFeed = data.findLast(d => d.machine_name === "ESP32_THERMAL_CAM" && (d.thermal_image || d.live_image_b64));
+    const hardwareFeed = findLastCompatible(data, d => d.machine_name === "ESP32_THERMAL_CAM" && (d.thermal_image || d.live_image_b64));
     const latestReading = hardwareFeed || data[data.length - 1];
 
     if (latestReading && (latestReading.thermal_image || latestReading.live_image_b64)) {
@@ -464,9 +511,72 @@ function updateLiveFeed(data) {
         img.style.display = 'block';
         document.getElementById('feed-machine').innerText = `(${latestReading.machine_name})`;
         drawHotspots(latestReading);
+        
+        // --- PRECISION GUIDANCE ---
+        processPrecisionGuidance(latestReading);
 
         // Update live metrics from this frame
         updateLiveMetrics(latestReading);
+    }
+}
+
+// ─── Precision Guidance Logic ──────────────────────────────────────────────
+function processPrecisionGuidance(reading) {
+    const hud = document.getElementById('precision-hud');
+    const mapArrowGroup = document.getElementById('map-guidance-group');
+    const mapArrow = document.getElementById('map-guidance-arrow');
+    const dirText = document.getElementById('hud-direction');
+    const angleText = document.getElementById('hud-angle');
+    const distText = document.getElementById('hud-distance');
+
+    if (!hud || !mapArrowGroup) return;
+
+    let hotspots = reading.hotspots;
+    if (typeof hotspots === 'string') {
+        try { hotspots = JSON.parse(hotspots); } catch(e) { hotspots = []; }
+    }
+
+    // Hide guidance if no hotspots or if data is safe
+    if (!hotspots || hotspots.length === 0 || reading.status === 'SAFE') {
+        hud.classList.add('hidden');
+        mapArrowGroup.classList.add('hidden');
+        return;
+    }
+
+    hud.classList.remove('hidden');
+    mapArrowGroup.classList.remove('hidden');
+
+    // Use the primary (largest/first) hotspot for guidance
+    const hs = hotspots[0];
+    const x = hs.x;
+    const area = hs.area;
+
+    // 1. Direction Classification (LEFT/CENTER/RIGHT)
+    let direction = "CENTER";
+    if (x <= 26) direction = "LEFT";
+    else if (x >= 54) direction = "RIGHT";
+
+    // 2. Angle Calculation (Angle = x / width * FOV)
+    const fov = 60;
+    const width = 80;
+    const angleOffset = (x / width) * fov - (fov / 2); // Relative to center (-30 to +30)
+    const displayAngle = Math.abs(Math.round(angleOffset));
+
+    // 3. Distance Estimation
+    const distanceVal = (25 / Math.sqrt(area)).toFixed(1);
+
+    // Update HUD Stats
+    dirText.textContent = direction;
+    angleText.textContent = `${displayAngle}° ${direction === 'CENTER' ? '' : direction}`;
+    distText.textContent = `~${distanceVal}m`;
+    
+    // 4. Update Map Arrow Rotation
+    // In CSS, transform-origin is 50% 95% (camera location)
+    mapArrow.style.transform = `rotate(${angleOffset}deg)`;
+
+    // 5. Voice Guidance (Throttled by speakAlert)
+    if (reading.status === 'DANGER' || reading.status === 'WARNING') {
+        speakAlert(`Warning: Overheating detected on your ${direction.toLowerCase()} side.`);
     }
 }
 
@@ -518,7 +628,7 @@ function updateHotspotList(data) {
     if (!list) return;
 
     // Show hotspots from the LATEST reading with any hotspots
-    const latest = data.findLast(d => {
+    const latest = findLastCompatible(data, d => {
         let hs = d.hotspots;
         if (typeof hs === 'string') { try { hs = JSON.parse(hs); } catch(e) { hs = []; } }
         return Array.isArray(hs) && hs.length > 0;
@@ -584,7 +694,11 @@ function updateFactoryMap(data) {
         const isWarn = entry?.status === 'WARNING';
         const isDanger = entry?.status === 'DANGER' || entry?.status === 'FIRE RISK' || entry?.status === 'NOK';
         
-        const cls = !entry ? 'node-unknown' : isDanger ? 'node-nok' : isWarn ? 'node-warning' : 'node-ok';
+        // --- VISIBILITY REFINEMENT ---
+        // Hide node if safe or no data
+        if (isSafe) return;
+
+        const cls = isDanger ? 'node-nok' : isWarn ? 'node-warning' : 'node-ok';
         const tip = entry ? `${name}\n${entry.temperature}°C — ${entry.status}` : `${name}: No Data`;
 
         node.classList.add(cls);
@@ -600,14 +714,8 @@ function updateFactoryMap(data) {
 // ██  SMART DANGER ZONE DETECTION
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Zone configuration — each zone is linked to a machine
-const dangerZones = [
-    { id: 'zone-motor-a',     name: 'Motor A Zone',       machine: 'Motor A',       threshold: 85,  x: 20, y: 30, radius: 55, currentTemp: 0, state: 'safe', lastAlertTime: 0, distance: 0, direction: '' },
-    { id: 'zone-motor-b',     name: 'Motor B Zone',       machine: 'Motor B',       threshold: 85,  x: 50, y: 20, radius: 55, currentTemp: 0, state: 'safe', lastAlertTime: 0, distance: 0, direction: '' },
-    { id: 'zone-motor-c',     name: 'Motor C Zone',       machine: 'Motor C',       threshold: 85,  x: 80, y: 40, radius: 55, currentTemp: 0, state: 'safe', lastAlertTime: 0, distance: 0, direction: '' },
-    { id: 'zone-conveyor',    name: 'Conveyor Zone',      machine: 'Conveyor Belt', threshold: 80,  x: 40, y: 70, radius: 60, currentTemp: 0, state: 'safe', lastAlertTime: 0, distance: 0, direction: '' },
-    { id: 'zone-pump',        name: 'Pump Unit Zone',     machine: 'Pump Unit',     threshold: 90,  x: 75, y: 80, radius: 55, currentTemp: 0, state: 'safe', lastAlertTime: 0, distance: 0, direction: '' },
-];
+// Zone configuration — dynamically populated from hotspots and backend configs
+let dangerZones = [];
 
 const CAMERA_POS = { x: 50, y: 95 }; // Bottom-center reference
 
@@ -646,6 +754,11 @@ const MAX_ZONE_POINTS = 30;
 const ZONE_COLORS = ['#00d2ff', '#ff4b4b', '#00e676', '#ffaa00', '#a855f7'];
 let userRole = 'operator';   // set on login
 
+// PERFORMANCE: Throttling & DOM Cache
+let lastUiUpdateTime = 0;
+const UI_MIN_INTERVAL = 200; // Max 5 FPS for UI components
+let lastHotspotCount = -1;
+
 // ─── Determine zone state from temperature ────────────────────────────────
 function getZoneState(temp, threshold) {
     if (temp >= threshold)            return 'danger';
@@ -653,47 +766,76 @@ function getZoneState(temp, threshold) {
     return 'safe';
 }
 
-// ─── Render danger zone circles on the map ────────────────────────────────
+// ─── Render danger zone circles on the map (OPTIMIZED: DOM RE-USE) ────────
 function renderDangerZoneCircles() {
     const container = document.getElementById('danger-zones');
     if (!container) return;
-    container.innerHTML = '';
 
+    // Track active IDs to remove others
+    const activeIds = new Set();
+    
     dangerZones.forEach(zone => {
-        const el = document.createElement('div');
-        el.className = `danger-zone-circle zone-${zone.state}`;
-        el.id = zone.id;
+        if (zone.state === 'safe') return;
+        activeIds.add(zone.id);
+
+        let el = document.getElementById(zone.id);
+        if (!el) {
+            el = document.createElement('div');
+            el.id = zone.id;
+            container.appendChild(el);
+        }
+
+        const className = `danger-zone-circle zone-${zone.state}`;
+        if (el.className !== className) el.className = className;
+        
         el.style.left   = `${zone.x}%`;
         el.style.top    = `${zone.y}%`;
         el.style.width   = `${zone.radius}px`;
         el.style.height  = `${zone.radius}px`;
 
-        el.innerHTML = `
-            <span class="zone-temp">${zone.currentTemp > 0 ? zone.currentTemp.toFixed(1) + '°C' : '--'}</span>
-            <span class="zone-label">${zone.name}</span>
-        `;
-        container.appendChild(el);
+        const tempText = zone.currentTemp > 0 ? zone.currentTemp.toFixed(1) + '°C' : '--';
+        const innerHtml = `<span class="zone-temp">${tempText}</span><span class="zone-label">${zone.name}</span>`;
+        if (el.innerHTML !== innerHtml) el.innerHTML = innerHtml;
+    });
+
+    // Clean up stale zones
+    Array.from(container.children).forEach(child => {
+        if (!activeIds.has(child.id)) container.removeChild(child);
     });
 }
 
-// ─── Render zone status cards ─────────────────────────────────────────────
-function renderZoneStatusCards() {
+// ─── Render zone status cards (OPTIMIZED: DOM RE-USE) ──────────────────────
+function renderZoneStatusCards(machines = {}) {
     const container = document.getElementById('zone-cards');
     if (!container) return;
-    container.innerHTML = '';
+
+    const activeIds = new Set();
 
     dangerZones.forEach(zone => {
+        const cardId = `card-${zone.id}`;
+        activeIds.add(cardId);
+
         const pct = zone.threshold > 0 ? Math.min((zone.currentTemp / zone.threshold) * 100, 120) : 0;
         const barColor = zone.state === 'danger' ? 'var(--alert)' :
                          zone.state === 'warning' ? '#ffaa00' : 'var(--ok)';
 
-        // Calculate spatial metrics
+        const machineEntry = machines[zone.machine];
+        const healthScore = (machineEntry && machineEntry.health_score !== undefined) ? machineEntry.health_score : 100;
+
         zone.direction = calculateBearing(zone.x, zone.y);
         zone.distance = calculateDistance(zone.x, zone.y);
 
-        const card = document.createElement('div');
-        card.className = `zone-card ${zone.state}`;
-        card.innerHTML = `
+        let card = document.getElementById(cardId);
+        if (!card) {
+            card = document.createElement('div');
+            card.id = cardId;
+            container.appendChild(card);
+        }
+
+        const className = `zone-card ${zone.state}`;
+        if (card.className !== className) card.className = className;
+
+        const innerHtml = `
             <div class="zone-card-header">
                 <span class="zone-card-name">${zone.name}</span>
                 <span class="zone-card-badge ${zone.state}">
@@ -701,20 +843,28 @@ function renderZoneStatusCards() {
                 </span>
             </div>
             <div class="zone-card-body">
-                <span class="label">Current</span>
-                <span class="value" style="color:${barColor}">${zone.currentTemp > 0 ? zone.currentTemp.toFixed(1) + '°C' : '--'}</span>
-                <span class="label">Orientation</span>
-                <span class="value">${zone.direction}</span>
-                <span class="label">Distance</span>
-                <span class="value">${zone.distance}m</span>
-                <span class="label">Machine</span>
-                <span class="value">${zone.machine}</span>
+                <div style="grid-column: 1 / span 1;">
+                    ${createHealthGauge(healthScore)}
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.2rem; font-size:0.75rem;">
+                    <span class="label">Temp</span>
+                    <span class="value" style="color:${barColor}">${zone.currentTemp > 0 ? zone.currentTemp.toFixed(1) + '°C' : '--'}</span>
+                    <span class="label">Dist</span>
+                    <span class="value">${zone.distance}m</span>
+                    <span class="label">Dir</span>
+                    <span class="value">${zone.direction}</span>
+                </div>
             </div>
             <div class="zone-temp-bar">
                 <div class="zone-temp-bar-fill" style="width:${Math.min(pct, 100)}%;background:${barColor};"></div>
             </div>
         `;
-        container.appendChild(card);
+        if (card.innerHTML !== innerHtml) card.innerHTML = innerHtml;
+    });
+
+    // Clean up stale cards
+    Array.from(container.children).forEach(child => {
+        if (!activeIds.has(child.id)) container.removeChild(child);
     });
 }
 
@@ -759,16 +909,16 @@ function fireDangerToast(zone) {
 
 // ─── Main danger zone update — called on every data push ──────────────────
 function updateDangerZones(data) {
-    // Build latest temps per machine
+    // PERFORMANCE: Throttle UI updates to prevent high CPU usage
+    const now = Date.now();
+    if (now - lastUiUpdateTime < UI_MIN_INTERVAL) return;
+    lastUiUpdateTime = now;
+
     const machines = {};
     for (const entry of data) {
         if (!machines[entry.machine_name]) machines[entry.machine_name] = entry;
     }
 
-    let dangerCount = 0;
-    const timeLabel = new Date().toLocaleTimeString();
-    
-    // Attempt to compute ROI-specific temperatures based on backend Hotspots
     const cameraEntry = machines["ESP32_THERMAL_CAM"];
     let camHotspots = [];
     if (cameraEntry && cameraEntry.hotspots) {
@@ -776,60 +926,44 @@ function updateDangerZones(data) {
             camHotspots = typeof cameraEntry.hotspots === 'string' ? JSON.parse(cameraEntry.hotspots) : cameraEntry.hotspots;
         } catch(e) { camHotspots = []; }
     }
-    // Scale for ROI calculations
-    const scaleX = 800 / 80;   // Assumed frontend overlay width/camera width
-    const scaleY = 600 / 62;
 
-    dangerZones.forEach((zone, i) => {
-        let localMaxTemp = 0;
+    // PROJECT HOTSPOTS TO MAP
+    const currentHotspotZones = [];
+    camHotspots.forEach((hs, idx) => {
+        const nx = (hs.x + hs.w/2) / 40 - 1; 
+        const ny = (hs.y + hs.h/2) / 31 - 1; 
 
-        // ROI Spatial Calculation (if using live feed hotspots)
-        if (camHotspots.length > 0) {
-            // Map percentage based UI coordinates to rough pixel spatial coordinates
-            const zx = (zone.x / 100) * 800; // rough px mapping
-            const zy = (zone.y / 100) * 600;
-            
-            camHotspots.forEach(hs => {
-                const hx = hs.x * scaleX;
-                const hy = hs.y * scaleY;
-                const hw = hs.w * scaleX;
-                const hh = hs.h * scaleY;
-                
-                // Simple bounding box intersection with zone circle
-                // If rect center is near circle center
-                const cx = hx + hw/2;
-                const cy = hy + hh/2;
-                const dist = Math.sqrt(Math.pow(cx - zx, 2) + Math.pow(cy - zy, 2));
-                
-                if (dist < zone.radius * 2) {
-                    localMaxTemp = Math.max(localMaxTemp, hs.max_val);
-                }
-            });
-        }
+        const mapX = 50 + (nx * 40); 
+        const mapY = 47.5 - (ny * 37.5); 
+
+        const machineId = `hotspot_${idx}`;
+        const config = assetConfigs[machineId] || {};
         
-        // Fallback: If no spatial data matches, use the machine's global temp (simulator behavior)
-        if (localMaxTemp === 0) {
-            const entry = machines[zone.machine];
-            if (entry) localMaxTemp = entry.temperature;
-        }
+        currentHotspotZones.push({
+            id: `zone-${machineId}`,
+            name: config.display_name || `Hotspot #${idx + 1}`,
+            machine: machineId,
+            threshold: config.threshold || 85,
+            x: mapX,
+            y: mapY,
+            radius: 50,
+            currentTemp: hs.max_val,
+            state: getZoneState(hs.max_val, config.threshold || 85),
+            lastAlertTime: 0,
+            distance: calculateDistance(mapX, mapY),
+            direction: calculateBearing(mapX, mapY)
+        });
+    });
 
-        if (localMaxTemp > 0) {
-            zone.currentTemp = localMaxTemp;
-        }
+    // Update the global dangerZones array
+    dangerZones = currentHotspotZones;
 
-        const newState = getZoneState(zone.currentTemp, zone.threshold);
-
-        // Fire toast on transition TO danger
-        if (newState === 'danger' && zone.state !== 'danger') {
-            fireDangerToast(zone);
-        }
-
-        zone.state = newState;
-        if (newState === 'danger') dangerCount++;
-
-        // Track history for zone chart
+    let dangerCount = 0;
+    dangerZones.forEach(zone => {
+        if (zone.state === 'danger') dangerCount++;
+        
+        const timeLabel = new Date().toLocaleTimeString();
         if (!zoneChartHistory[zone.name]) zoneChartHistory[zone.name] = [];
-        // Only append if it's a new timeLabel
         const hist = zoneChartHistory[zone.name];
         if (hist.length === 0 || hist[hist.length-1].t !== timeLabel) {
             hist.push({ t: timeLabel, v: zone.currentTemp });
@@ -837,7 +971,6 @@ function updateDangerZones(data) {
         }
     });
 
-    // Update zone alert count badge
     const badge = document.getElementById('zone-alert-count');
     if (badge) {
         if (dangerCount > 0) {
@@ -848,10 +981,23 @@ function updateDangerZones(data) {
         }
     }
 
+    const machinesMap = {};
+    if (data && Array.isArray(data)) {
+        for (const entry of data) {
+            if (!machinesMap[entry.machine_name]) machinesMap[entry.machine_name] = entry;
+        }
+    }
+
     renderDangerZoneCircles();
-    renderZoneStatusCards();
+    renderZoneStatusCards(machinesMap);
     updateZoneChart();
     renderDirectionalLayer();
+    
+    // PERFORMANCE: Only re-init admin controls if the number of hotspots changed
+    if (camHotspots.length !== lastHotspotCount) {
+        lastHotspotCount = camHotspots.length;
+        initAdminControls();
+    }
 }
 
 function renderDirectionalLayer() {
@@ -894,6 +1040,12 @@ function initZoneChart() {
     const canvas = document.getElementById('zoneChart');
     if (!canvas || typeof Chart === 'undefined') return;
 
+    // PERFORMANCE: Destroy existing chart to avoid "Canvas in use" error
+    if (zoneChart) {
+        zoneChart.destroy();
+        zoneChart = null;
+    }
+
     const ctx = canvas.getContext('2d');
     const datasets = dangerZones.map((zone, i) => ({
         label: zone.name,
@@ -932,13 +1084,35 @@ function initZoneChart() {
 }
 
 function updateZoneChart() {
-    if (!zoneChart) return;
+    if (!zoneChart || dangerZones.length === 0) return;
 
-    // Use labels from the first zone
+    // 1. Sync datasets to match dangerZones
+    if (zoneChart.data.datasets.length !== dangerZones.length) {
+        zoneChart.data.datasets = dangerZones.map((zone, i) => ({
+            label: zone.name,
+            data: [],
+            borderColor: ZONE_COLORS[i % ZONE_COLORS.length],
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            pointRadius: 2,
+            pointHoverRadius: 5,
+            tension: 0.4
+        }));
+    } else {
+        // Sync labels in case of rename
+        dangerZones.forEach((zone, i) => {
+            if (zoneChart.data.datasets[i].label !== zone.name) {
+                zoneChart.data.datasets[i].label = zone.name;
+            }
+        });
+    }
+
+    // 2. Update x-axis labels from first zone
     const firstZone = dangerZones[0];
-    const history   = zoneChartHistory[firstZone.name] || [];
-    zoneChart.data.labels = history.map(p => p.t);
+    const h0 = zoneChartHistory[firstZone.name] || [];
+    zoneChart.data.labels = h0.map(p => p.t);
 
+    // 3. Update data points
     dangerZones.forEach((zone, i) => {
         const h = zoneChartHistory[zone.name] || [];
         zoneChart.data.datasets[i].data = h.map(p => p.v);
@@ -965,18 +1139,48 @@ function initAdminControls() {
         const row = document.createElement('div');
         row.className = 'threshold-row';
         row.innerHTML = `
-            <label>${zone.name}</label>
+            <div style="display:flex; flex-direction:column; gap:2px; flex:1;">
+                <input type="text" class="zone-name-edit" value="${zone.name}" style="background:transparent; border:none; border-bottom:1px solid var(--panel-border); color:var(--accent); font-size:0.8rem;" />
+                <label style="font-size:0.6rem; color:var(--text-muted);">${zone.machine}</label>
+            </div>
             <input type="range" min="50" max="150" value="${zone.threshold}"
                    data-zone-id="${zone.id}" />
             <span class="threshold-val">${zone.threshold}°C</span>
         `;
 
+        const nameInput = row.querySelector('.zone-name-edit');
         const slider = row.querySelector('input[type="range"]');
         const valSpan = row.querySelector('.threshold-val');
-        slider.addEventListener('input', () => {
+
+        const syncConfig = async () => {
+            if (authToken) {
+                try {
+                    await fetch(`${SERVER_URL_BASE}/update_config`, {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${authToken}`
+                        },
+                        body: JSON.stringify({ 
+                            machine_name: zone.machine, 
+                            threshold: zone.threshold,
+                            display_name: zone.name 
+                        })
+                    });
+                } catch(e) { console.error("Update config failed:", e); }
+            }
+        };
+
+        nameInput.addEventListener('change', () => {
+            zone.name = nameInput.value;
+            syncConfig();
+        });
+
+        slider.addEventListener('change', () => {
             const newVal = parseInt(slider.value);
             zone.threshold = newVal;
             valSpan.textContent = `${newVal}°C`;
+            syncConfig();
         });
 
         slidersDiv.appendChild(row);
@@ -1151,6 +1355,9 @@ const FIRE_COOLDOWN_MS = 15000;    // Don't show popup again for 15s per machine
 let fireAlertActive = false;
 
 function detectFireRisk(data) {
+    // Intrusive alerts disabled for local demo. 
+    // Logic remains here for future reference but is bypassed.
+    return;
     const machines = {};
     for (const entry of data) {
         if (entry.machine_name && entry.temperature) machines[entry.machine_name] = entry;
@@ -1185,6 +1392,8 @@ function detectFireRisk(data) {
 }
 
 function triggerFireAlert(machineName, temp, spike) {
+    // Intrusive alerts disabled for local demo.
+    return;
     fireAlertActive = true;
     const overlay = document.getElementById('fire-alert-overlay');
     const details = document.getElementById('fire-details');
@@ -1401,17 +1610,93 @@ function updateForecastLine() {
     }
 }
 
-// ─── Master update function for all advanced features ─────────────────────
-function updateAdvancedFeatures(data) {
-    if (!cameraConnected) return; // Halt analytics if camera is offline
+// ─── Stage 2: UI Event Handlers ──────────────────────────────────────────
+function initStage2Handlers() {
+    const isoBtn = document.getElementById('iso-toggle');
+    const mapContainer = document.getElementById('danger-map-container');
+    if (isoBtn && mapContainer) {
+        isoBtn.addEventListener('click', () => {
+            isometricEnabled = !isometricEnabled;
+            mapContainer.classList.toggle('isometric', isometricEnabled);
+            isoBtn.classList.toggle('active', isometricEnabled);
+            isoBtn.innerHTML = isometricEnabled ? '📐 Normal View' : '📐 Isometric';
+        });
+    }
 
-    updatePredictions(data);
-    detectFireRisk(data);
-    updateTimeline(data);
-    updateRecommendations(data);
-    updateWorkerSafety();
-    updateForecastLine();
+    // Reset Map Handler
+    const resetBtn = document.getElementById('map-reset');
+    if (resetBtn) {
+        resetBtn.onclick = async () => {
+            if (!confirm("Are you sure you want to reset all map data and hotspot names?")) return;
+            try {
+                const res = await fetch(`${SERVER_URL_BASE}/reset_data`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                if (res.ok) {
+                    alert("Reset complete. The dashboard will now reload.");
+                    location.reload();
+                }
+            } catch(e) { console.error("Reset failed:", e); }
+        };
+    }
 }
+
+// ─── Stage 2: Health Gauge SVG Generator ───────────────────────────────
+function createHealthGauge(value) {
+    const radius = 24;
+    const circ = 2 * Math.PI * radius;
+    const offset = circ - (value / 100) * circ;
+    const color = value > 70 ? 'var(--ok)' : value > 40 ? '#ffaa00' : 'var(--alert)';
+    
+    return `
+        <div class="health-gauge-container ${value < 30 ? 'critical-health' : ''}">
+            <svg class="health-svg" width="60" height="60">
+                <circle class="health-bg" cx="30" cy="30" r="${radius}"></circle>
+                <circle class="health-fill" cx="30" cy="30" r="${radius}" 
+                        style="stroke-dasharray: ${circ}; stroke-dashoffset: ${offset}; stroke: ${color};"></circle>
+            </svg>
+            <div class="health-text" style="color:${color}">${Math.round(value)}%</div>
+        </div>
+    `;
+}
+
+// Fetch configs from backend
+async function fetchConfigs() {
+    if (!authToken) return;
+    try {
+        const res = await fetch(`${SERVER_URL_BASE}/configs`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (res.ok) {
+            assetConfigs = await res.json();
+            // Sync local dangerZones with backend configs if available
+            dangerZones.forEach(zone => {
+                if (assetConfigs[zone.machine]) {
+                    zone.threshold = assetConfigs[zone.machine].threshold;
+                }
+            });
+            initAdminControls(); // re-init with backend values
+        }
+    } catch (e) {
+        console.error("Config fetch failed:", e);
+    }
+}
+
+// Listen for DOM content and initialize
+window.addEventListener('DOMContentLoaded', () => {
+    initChart();
+    initStage2Handlers();
+    if (authToken) {
+        dashboardView.style.display = 'block';
+        loginView.style.display = 'none';
+        fetchConfigs();
+        loadData();
+        initWebSocket();
+        startCameraWatchdog();
+        initZoneChart();
+    }
+});
 
 // ─── Connection Status ─────────────────────────────────────────────────────
 function updateConnectionStatus(connected) {
@@ -1484,22 +1769,24 @@ function initWebSocket() {
     ws.onopen = () => { updateConnectionStatus(true); };
 
     ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+        try {
+            const data = JSON.parse(event.data);
+            if (!Array.isArray(data)) return;
 
-        // Check if this WebSocket push contains a live ESP32 camera frame
-        // This is the ONLY place that can mark the camera as "Connected"
-        checkForLiveESP32Frame(data);
+            // Check if this WebSocket push contains a live ESP32 camera frame
+            checkForLiveESP32Frame(data);
 
-        // ONLY process real-time analytics and monitoring if the camera is actually sending frames
-        if (cameraConnected) {
-            updateStatus(data);
-            updateAlerts(data);
-            updateLiveFeed(data);        // Renders visual feed and hotspots
-            updateFactoryMap(data);
-            updateHotspotList(data);
-            updateIncidentHistory(data);
-            updateDangerZones(data);     // Update danger zones with live data
-            updateAdvancedFeatures(data); // Run AI predictions, fire detection, timeline, etc
+            if (cameraConnected) {
+                updateStatus(data);
+                updateAlerts();
+                updateLiveFeed(data);
+                updateFactoryMap(data);
+                updateHotspotList(data);
+                updateIncidentHistory(data);
+                updateDangerZones(data);
+            }
+        } catch (e) {
+            console.error("WS Message Error:", e);
         }
     };
 
@@ -1534,7 +1821,7 @@ function handleLogin(e) {
 
 function showDashboard() {
     loginView.style.display  = 'none';
-    dashboardView.style.display = 'block';
+    dashboardView.style.display = 'flex';
     try { initChart(); } catch (e) { console.error("Chart init error:", e); }
     try { initZoneChart(); } catch (e) { console.error("Zone chart init error:", e); }
     renderDangerZoneCircles();  // Initial render of zones
