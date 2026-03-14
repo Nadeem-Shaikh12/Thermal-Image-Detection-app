@@ -24,41 +24,53 @@
     </div>
 
     <!-- Dashboard View -->
-    <div id="dashboard-view" style="display: none;">
-        <header>
-            <div class="header-content">
-                <div>
-                    <h1>DreamVision Dashboard</h1>
-                    <p>Live Thermal Data &amp; Machine Status</p>
-                </div>
-                <div class="header-actions">
-                    <button id="voice-toggle" class="btn-small voice-btn" title="Toggle Voice Alerts">🔊 Voice</button>
-                    <span id="user-role" class="badge">Operator</span>
-                    <button id="logout-btn" class="btn-small">Logout</button>
-                </div>
+    <div id="dashboard-view" style="display: none;" class="app-shell">
+        
+        <!-- Future Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-icon">▲</div>
+                <h2>DREAMVISION</h2>
             </div>
-            <div class="server-status">
-                <span class="status-indicator"></span>
-                <span id="connection-status">Connecting...</span>
-            </div>
-        </header>
-        <!-- Worker Safety Status Bar -->
-        <div id="worker-safety-bar" class="safety-bar safety-safe">
-            <div class="safety-light">
-                <span class="safety-icon" id="safety-icon">🟢</span>
-            </div>
-            <div class="safety-info">
-                <div class="safety-level" id="safety-level">ALL SYSTEMS SAFE</div>
-                <div class="safety-detail" id="safety-detail">All zones operating within normal parameters</div>
-            </div>
-            <div class="safety-stats" id="safety-stats">
-                <span class="safety-stat"><strong id="stat-safe">5</strong> Safe</span>
-                <span class="safety-stat"><strong id="stat-warning">0</strong> Warning</span>
-                <span class="safety-stat"><strong id="stat-danger">0</strong> Danger</span>
-            </div>
-        </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active"><span class="icon">⊞</span> Dashboard</a>
+                <a href="#feed-container" class="nav-item"><span class="icon">📷</span> Live Feed</a>
+                <a href="#danger-map-container" class="nav-item"><span class="icon">🛡️</span> Danger Map</a>
+                <a href="#prediction-cards" class="nav-item"><span class="icon">🤖</span> AI Analytics</a>
+                <a href="#alert-list" class="nav-item"><span class="icon">🚨</span> Alerts</a>
+                <a href="#admin-zone-controls" class="nav-item"><span class="icon">⚙️</span> Settings</a>
+            </nav>
+        </aside>
 
-        <main class="dashboard">
+        <!-- Main Workspace Area -->
+        <div class="main-content">
+            
+            <!-- Future Top Navbar (Glassmorphic) -->
+            <header class="topbar">
+                <div class="topbar-left">
+                    <div class="server-status">
+                        <span class="status-indicator"></span>
+                        <span id="connection-status">Connecting...</span>
+                    </div>
+                </div>
+                <div class="topbar-right">
+                    <button id="voice-toggle" class="btn-glow voice-btn" title="Toggle Voice Alerts">🔊 Voice Alerts</button>
+                    
+                    <!-- Worker Safety Status Bar (Moved to Top Nav) -->
+                    <div id="worker-safety-bar" class="safety-badge safety-safe">
+                        <span class="safety-icon" id="safety-icon">🟢</span>
+                        <span class="safety-level" id="safety-level">ALL SYSTEMS SAFE</span>
+                    </div>
+
+                    <div class="profile-dropdown">
+                        <span id="user-role" class="badge role-badge">Operator</span>
+                        <button id="logout-btn" class="btn-glow logout-btn">Logout</button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Original Dashboard Grid -->
+            <main class="dashboard">
 
             <!-- Row 1: Live Feed + Live Metrics -->
             <section class="panel live-feed">
@@ -273,7 +285,8 @@
 
         <!-- Danger Zone Toast Notifications -->
         <div id="danger-toast-container"></div>
-    </div>
+        </div> <!-- End of main-content -->
+    </div> <!-- End of dashboard-view app-shell -->
 
     <script src="Chart.min.js"></script>
     <script src="script.js"></script>

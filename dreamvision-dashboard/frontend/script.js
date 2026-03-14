@@ -56,8 +56,8 @@ function initChart() {
         if (tempChart) tempChart.destroy();
         const ctx = tempCanvas.getContext('2d');
         const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-        gradient.addColorStop(0, 'rgba(0, 210, 255, 0.5)');
-        gradient.addColorStop(1, 'rgba(0, 210, 255, 0.02)');
+        gradient.addColorStop(0, 'rgba(0, 242, 254, 0.5)');
+        gradient.addColorStop(1, 'rgba(0, 242, 254, 0.02)');
 
         tempChart = new Chart(ctx, {
             type: 'line',
@@ -66,10 +66,10 @@ function initChart() {
                 datasets: [{
                     label: 'Max Temp (°C)',
                     data: [],
-                    borderColor: '#00d2ff',
+                    borderColor: '#00F2FE',
                     backgroundColor: gradient,
                     borderWidth: 2,
-                    pointBackgroundColor: '#00d2ff',
+                    pointBackgroundColor: '#00F2FE',
                     pointBorderColor: '#fff',
                     pointRadius: 3,
                     pointHoverRadius: 6,
@@ -99,8 +99,8 @@ function initChart() {
         if (hotspotChart) hotspotChart.destroy();
         const hsCtx = hsCanvas.getContext('2d');
         const hsGrad = hsCtx.createLinearGradient(0, 0, 0, 300);
-        hsGrad.addColorStop(0, 'rgba(255, 75, 75, 0.45)');
-        hsGrad.addColorStop(1, 'rgba(255, 75, 75, 0.02)');
+        hsGrad.addColorStop(0, 'rgba(255, 59, 48, 0.45)');
+        hsGrad.addColorStop(1, 'rgba(255, 59, 48, 0.02)');
 
         hotspotChart = new Chart(hsCtx, {
             type: 'line',
@@ -109,10 +109,10 @@ function initChart() {
                 datasets: [{
                     label: 'Hotspot Count',
                     data: [],
-                    borderColor: '#ff4b4b',
+                    borderColor: '#FF3B30',
                     backgroundColor: hsGrad,
                     borderWidth: 2,
-                    pointBackgroundColor: '#ff4b4b',
+                    pointBackgroundColor: '#FF3B30',
                     pointBorderColor: '#fff',
                     pointRadius: 3,
                     pointHoverRadius: 6,
@@ -1821,7 +1821,7 @@ function handleLogin(e) {
 
 function showDashboard() {
     loginView.style.display  = 'none';
-    dashboardView.style.display = 'block';
+    dashboardView.style.display = 'flex';
     try { initChart(); } catch (e) { console.error("Chart init error:", e); }
     try { initZoneChart(); } catch (e) { console.error("Zone chart init error:", e); }
     renderDangerZoneCircles();  // Initial render of zones
