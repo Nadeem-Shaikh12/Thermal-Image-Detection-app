@@ -132,7 +132,13 @@
             </section>
 
             <section class="panel factory-map" style="grid-column: 1 / -1;">
-                <h2>🛡️ Smart Danger Zone Map <span id="zone-alert-count" class="badge hidden" style="background:var(--alert);">0</span></h2>
+                <h2>🛡️ Smart Danger Zone Map 
+                    <div style="display:flex; gap:0.5rem; align-items:center;">
+                        <button id="map-reset" class="btn-small" style="font-size:0.7rem; background:rgba(255,100,100,0.1); border-color:rgba(255,100,100,0.2);">🔄 Reset Map</button>
+                        <button id="iso-toggle" class="btn-small" style="font-size:0.7rem;">📐 Isometric</button>
+                        <span id="zone-alert-count" class="badge hidden" style="background:var(--alert);">0</span>
+                    </div>
+                </h2>
                 <div class="danger-zone-layout">
                     <div class="map-container" id="danger-map-container" style="position:relative;height:340px;background:linear-gradient(135deg, rgba(0,0,0,0.3), rgba(0,0,0,0.15));border:1px solid var(--panel-border);border-radius:10px;">
                         <!-- Grid lines for factory floor look -->
@@ -269,7 +275,7 @@
         <div id="danger-toast-container"></div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="Chart.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

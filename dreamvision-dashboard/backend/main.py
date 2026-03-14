@@ -2,14 +2,31 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPExcept
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordRequestForm
-from database import init_db, insert_data, get_all_data
+from database import (
+    init_db, get_all_data, insert_data, 
+    get_asset_configs, update_asset_config,
+    reset_database
+)
 from auth import verify_password, create_access_token, decode_access_token, oauth2_scheme, get_user
+from health_engine import calculate_health_score
 import base64
 import os
 import re
 import json
 from fpdf import FPDF
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
+
+# Initialize the database on startup
+init_db()
+
+# Global cache for machine histories (to calculate health trends)
+machine_histories = {}
+
+class ConfigUpdate(BaseModel):
+    machine_name: str
+    threshold: float
+    display_name: str = None
 
 # Initialize the database on startup
 init_db()
@@ -88,22 +105,75 @@ async def upload_data(data: dict):
         temperature=data.get("temperature", 0.0),
         status=data.get("status", "UNKNOWN"),
         timestamp=data.get("timestamp"),
-        thermal_image=image_path,  # We now store the PATH, not the Base64
+        thermal_image=image_path,
         hotspots=json.dumps(data.get("hotspots", []))
     )
     
+    # 3. Calculate Health Score
+    machine_name = data.get("machine", "Unknown")
+    current_temp = data.get("temperature", 0.0)
+    
+    # Track history for trend/stability
+    if machine_name not in machine_histories:
+        machine_histories[machine_name] = []
+    machine_histories[machine_name].append(current_temp)
+    if len(machine_histories[machine_name]) > 20:
+        machine_histories[machine_name].pop(0)
+
+    # Get threshold from config
+    configs = get_asset_configs()
+    asset_config = configs.get(machine_name, {"threshold": 100.0})
+    threshold = asset_config.get("threshold", 100.0)
+    
+    health_score = calculate_health_score(
+        current_temp, 
+        threshold, 
+        history=machine_histories[machine_name]
+    )
+
     # Broadcast the new data list to all connected websockets
-    # KEY SMOOTHNESS FIX: attach live base64 image to the last entry so the
-    # browser can render it directly — no second HTTP request needed.
     latest_data = get_all_data(limit=100)
-    if thermal_image_data and latest_data:
-        # Shallow-copy last entry so we don't mutate the DB row
-        live_entry = dict(latest_data[-1])
-        live_entry["live_image_b64"] = thermal_image_data
-        latest_data = latest_data[:-1] + [live_entry]
+    
+    if latest_data:
+        # Create a mutable copy of the latest entry
+        latest_entry = dict(latest_data[-1])
+        
+        # ALWAYS attach the current upload's base64 for real-time responsiveness
+        # The frontend uses this for the "Live Feed"
+        if thermal_image_data:
+            latest_entry["live_image_b64"] = thermal_image_data
+            
+        latest_entry["health_score"] = health_score
+        
+        # Replace the last element with our enhanced entry
+        latest_data[-1] = latest_entry
+        
     await manager.broadcast(latest_data)
     
-    return {"status": "stored", "image_path": image_path}
+    return {"status": "stored", "image_path": image_path, "health_score": health_score}
+
+@app.post("/reset_data")
+def reset_data(token: str = Depends(oauth2_scheme)):
+    payload = decode_access_token(token)
+    if not payload or payload.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    reset_database()
+    return {"status": "reset complete"}
+
+@app.get("/configs")
+def get_configs(token: str = Depends(oauth2_scheme)):
+    if not decode_access_token(token):
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return get_asset_configs()
+
+@app.post("/update_config")
+def update_config(update: ConfigUpdate, token: str = Depends(oauth2_scheme)):
+    payload = decode_access_token(token)
+    if not payload or payload.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    update_asset_config(update.machine_name, update.threshold, update.display_name)
+    return {"status": "updated"}
 
 @app.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends()):

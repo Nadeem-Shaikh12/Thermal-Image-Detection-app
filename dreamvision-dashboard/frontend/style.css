@@ -1344,3 +1344,82 @@ li:hover {
 
 
 
+/* ─── Stage 2: Isometric & Health Gauge Styles ────────────────── */
+
+/* Isometric Transform */
+.map-container.isometric {
+    transform: perspective(1000px) rotateX(45deg) rotateZ(-30deg) scale(0.9);
+    transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: 20px 20px 60px rgba(0,0,0,0.5), -5px -5px 30px rgba(0,210,255,0.1) !important;
+}
+
+/* Compensate rotation for items inside iso map so they stay upright */
+.map-container.isometric .map-node,
+.map-container.isometric .map-overlay-item,
+.map-container.isometric .danger-zone-circle {
+    transform: translate(-50%, -50%) rotateZ(30deg) rotateX(-45deg) !important;
+}
+
+/* Health Gauge Base */
+.health-gauge-container {
+    position: relative;
+    width: 60px;
+    height: 60px;
+    margin: 0 auto 0.5rem;
+}
+
+.health-svg {
+    transform: rotate(-90deg);
+}
+
+.health-bg {
+    fill: none;
+    stroke: rgba(255,255,255,0.05);
+    stroke-width: 4;
+}
+
+.health-fill {
+    fill: none;
+    stroke: var(--ok);
+    stroke-width: 4;
+    stroke-linecap: round;
+    transition: stroke-dasharray 1s ease, stroke 1s ease;
+}
+
+.health-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: white;
+}
+
+/* Zone Card Expansion for Health */
+.zone-card {
+    position: relative;
+    overflow: hidden;
+}
+
+.zone-card .health-mini-gauge {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    width: 30px;
+    height: 30px;
+}
+
+@keyframes glitch {
+    0% { transform: translate(0); }
+    20% { transform: translate(-2px, 2px); }
+    40% { transform: translate(-2px, -2px); }
+    60% { transform: translate(2px, 2px); }
+    80% { transform: translate(2px, -2px); }
+    100% { transform: translate(0); }
+}
+
+.critical-health {
+    animation: glitch 0.2s infinite;
+    color: var(--alert) !important;
+}
